@@ -1,6 +1,4 @@
 from bs4 import BeautifulSoup
-import cgi
-import htmlentitydefs
 import os
 import time
 import calendar
@@ -13,10 +11,11 @@ import re
 from collections import OrderedDict
 
 def parse_xml(xml):
-    return BeautifulSoup(xml, ["lxml", "xml"])
+    return BeautifulSoup(xml, "lxml-xml")
 
 def parse_document(filelocation):
-    return parse_xml(open(filelocation))
+    with open(filelocation) as fp:
+        return parse_xml(fp)
 
 def duplicate_tag(tag):
     # Make a completely new copy of a tag by parsing its contents again

@@ -1,5 +1,3 @@
-import cgi
-import htmlentitydefs
 import time
 import calendar
 
@@ -9,6 +7,8 @@ def first(x):
     "returns the first element of an iterable, swallowing index errors and returning None"
     try:
         return x[0]
+    except TypeError:
+        return next(x, None)
     except IndexError:
         return None
 
@@ -40,7 +40,7 @@ def strip_punctuation_space(value):
     if value == None:
         return None
     if type(value) == list:
-        return map(strip_punctuation, value)
+        return list(map(strip_punctuation, value))
     return strip_punctuation(value)
 
 def coerce_to_int(val, default=0xDEADBEEF):
@@ -185,8 +185,8 @@ def doi_to_doi_uri(value):
 
 def remove_doi_paragraph(tags):
     "Given a list of tags, only return those whose text doesn't start with 'DOI:'"
-    p_tags = filter(lambda tag: not starts_with_doi(tag), tags)
-    p_tags = filter(lambda tag: not paragraph_is_only_doi(tag), p_tags)
+    p_tags = [tag for tag in tags if starts_with_doi(tag) is False]
+    p_tags = [tag for tag in p_tags if paragraph_is_only_doi(tag) is False]
     return p_tags
 
 def remove_tag_from_tag(tag, nodename):
@@ -237,7 +237,7 @@ def node_contents_str(tag):
     """
     if tag is None:
         return None
-    return "".join(map(unicode, tag.children)) or None
+    return "".join(map(str, tag.children)) or None
     
 def first_parent(tag, nodename):
     """

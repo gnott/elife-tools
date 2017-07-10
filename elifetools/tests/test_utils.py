@@ -72,7 +72,7 @@ class TestUtils(unittest.TestCase):
         soup = parser.parse_xml(xml)
         tag = soup.find_all()[0]
         modified_tag = utils.remove_tag_from_tag(tag, unwanted_tag_names)
-        self.assertEqual(unicode(modified_tag), expected_xml)
+        self.assertEqual(str(modified_tag), expected_xml)
 
     @unpack
     @data(
@@ -119,7 +119,7 @@ class TestUtils(unittest.TestCase):
     def test_remove_doi_paragraph(self, xml, expected_xml):
         soup = parser.parse_xml(xml)
         modified_tag = utils.remove_doi_paragraph(soup.contents[0])
-        self.assertEqual(unicode(modified_tag), expected_xml)
+        self.assertEqual(str(modified_tag), expected_xml)
 
     @unpack
     @data(
