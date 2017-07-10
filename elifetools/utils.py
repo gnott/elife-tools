@@ -12,6 +12,13 @@ def first(x):
     except IndexError:
         return None
 
+def unicode_value(value):
+    try:
+        return unicode(value)
+    except NameError:
+        # assume Python 3 and use str
+        return str(value)
+
 def firstnn(x):
     "returns the first non-nil value within given iterable"
     return first(filter(None, x))
@@ -78,10 +85,10 @@ def clean_whitespace(value):
     if not value:
         return value
     if hasattr(value, 'lstrip'):
-        value = value.lstrip('\n ')
+        value = value.lstrip(b'\n ')
     if hasattr(value, 'rstrip'):
-        value = value.rstrip('\n ')
-    value = value.replace('\n', ' ')
+        value = value.rstrip(b'\n ')
+    value = value.replace(b'\n', b' ')
     return value
 
 def title_case(title):
@@ -170,11 +177,11 @@ def doi_uri_to_doi(value):
     "Strip the uri schema from the start of DOI URL strings"
     if value is None:
         return value
-    replace_values = ['http://dx.doi.org/', 'https://dx.doi.org/',
-                      'http://doi.org/', 'https://doi.org/']
+    replace_values = [b'http://dx.doi.org/', b'https://dx.doi.org/',
+                      b'http://doi.org/', b'https://doi.org/']
     for replace_value in replace_values:
-        value = value.replace(replace_value, '')
-    return value
+        value = value.replace(replace_value, b'')
+    return str(value)
 
 def doi_to_doi_uri(value):
     "Turn DOI into a valid uri"
@@ -237,8 +244,8 @@ def node_contents_str(tag):
     """
     if tag is None:
         return None
-    return "".join(map(str, tag.children)) or None
-    
+    return "".join(map(unicode_value, tag.children)).encode('utf-8') or None
+
 def first_parent(tag, nodename):
     """
     Given a beautiful soup tag, look at its parents and return the first
@@ -247,7 +254,7 @@ def first_parent(tag, nodename):
     if nodename is not None and type(nodename) == str:
         nodename = [nodename]
     return first(filter(lambda tag: tag.name in nodename, tag.parents))
-        
+
 def tag_ordinal(tag):
     """
     Given a beautiful soup tag, look at the tags of the same name that come before it
@@ -441,4 +448,4 @@ def rstrip_punctuation(value):
     "strip punctuation from the end of a label or title"
     if not value:
         return value
-    return value.rstrip('.:')
+    return value.rstrip(b'.:')

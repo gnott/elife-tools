@@ -5,7 +5,7 @@ def xml_to_html(html_flag, xml_string, base_url=None):
     "For formatting json output into HTML friendly format"
     if not xml_string or not html_flag is True:
         return xml_string
-    html_string = xml_string
+    html_string = str(xml_string)
     html_string = replace_xref_tags(html_string)
     html_string = replace_ext_link_tags(html_string)
     html_string = replace_email_tags(html_string)
@@ -30,6 +30,9 @@ def xml_to_html(html_flag, xml_string, base_url=None):
             html_string.encode('utf8')
         except UnicodeDecodeError:
             html_string = html_string.decode('utf8')
+        except AttributeError:
+            # python 3
+            pass
     return html_string
 
 def replace_simple_tags(s, from_tag='italic', to_tag='i', to_open_tag=None):

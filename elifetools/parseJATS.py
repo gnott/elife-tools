@@ -2082,7 +2082,7 @@ def body_block_paragraph_render(p_tag, html_flag=True, base_url=None):
     for child_tag in p_tag:
 
         if child_tag.name is None or body_block_content(child_tag) == {}:
-            paragraph_content = paragraph_content + unicode(child_tag)
+            paragraph_content = paragraph_content + unicode_value(child_tag)
 
         else:
             # Add previous paragraph content first
@@ -2229,7 +2229,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
         asset_tag_content["tables"] = []
         for table in tables:
             # Add the table tag back for now
-            table_content = '<table>' + node_contents_str(table) + '</table>'
+            table_content = '<table>' + str(node_contents_str(table)) + '</table>'
             asset_tag_content["tables"].append(convert(table_content))
 
         table_wrap_foot = raw_parser.table_wrap_foot(tag)
