@@ -1,5 +1,6 @@
 import time
 import calendar
+import re
 
 def first(x):
     if x is None:
@@ -93,7 +94,7 @@ def clean_whitespace(value):
 
 def title_case(title):
     "convert to title case with some words not changed"
-    do_not_change = ['p53', 'mRNA']
+    do_not_change = ['p53', 'mRNA', 'MRI', 'GTPases']
     change_to_lower = ['of', 'and', 'in']
     if title:
         words = title.split(' ')
@@ -122,6 +123,17 @@ def date_struct(year, month, day, tz = "UTC"):
     except(TypeError, ValueError):
         #logger.debug("date failed to convert: %s" % str(ymdtz))
         pass
+
+def date_struct_nn(year, month, day, tz="UTC"):
+    """
+    Assemble a date object but if day or month is none set them to 1
+    to make it easier to deal with partial dates
+    """
+    if not day:
+        day = 1
+    if not month:
+        month = 1
+    return date_struct(year, month, day, tz)
 
 def date_text(date_struct):
     # looks like: January 01, 2015
@@ -195,6 +207,15 @@ def remove_doi_paragraph(tags):
     p_tags = [tag for tag in tags if starts_with_doi(tag) is False]
     p_tags = [tag for tag in p_tags if paragraph_is_only_doi(tag) is False]
     return p_tags
+
+def orcid_uri_to_orcid(value):
+    "Strip the uri schema from the start of ORCID URL strings"
+    if value is None:
+        return value
+    replace_values = ['http://orcid.org/', 'https://orcid.org/']
+    for replace_value in replace_values:
+        value = value.replace(replace_value, '')
+    return value
 
 def remove_tag_from_tag(tag, nodename):
     if not nodename:
@@ -449,3 +470,52 @@ def rstrip_punctuation(value):
     if not value:
         return value
     return value.rstrip(b'.:')
+
+def escape_unmatched_angle_brackets(string, allowed_tag_fragments=()):
+    """
+    In order to make an XML string less malformed, escape
+    unmatched less than tags that are not part of an allowed tag
+    Note: Very, very basic, and do not try regex \1 style replacements
+      on unicode ever again! Instead this uses string replace
+    allowed_tag_fragments is a tuple of tag name matches for use with startswith()
+    """
+    if not string:
+        return string
+
+    # Split string on tags
+    tags = re.split('(<.*?>)', string)
+    #print tags
+
+    for i, val in enumerate(tags):
+        # Use angle bracket character counts to find unmatched tags
+        #  as well as our allowed_tags list to ignore good tags
+
+        if val.count('<') == val.count('>') and not val.startswith(allowed_tag_fragments):
+            val = val.replace('<', '&lt;')
+            val = val.replace('>', '&gt;')
+        else:
+            # Count how many unmatched tags we have
+            while val.count('<') != val.count('>'):
+                if val.count('<') != val.count('>') and val.count('<') > 0:
+                    val = val.replace('<', '&lt;', 1)
+                elif val.count('<') != val.count('>') and val.count('>') > 0:
+                    val = val.replace('>', '&gt;', 1)
+            if val.count('<') == val.count('>') and not val.startswith(allowed_tag_fragments):
+                # Send it through again in case there are nested unmatched tags
+                val = escape_unmatched_angle_brackets(val, allowed_tag_fragments)
+
+        tags[i] = val
+
+    return ''.join(tags)
+
+def escape_ampersand(string):
+    """
+    Quick convert unicode ampersand characters not associated with
+    a numbered entity or not starting with allowed characters to a plain &amp;
+    """
+    if not string:
+        return string
+    start_with_match = r"(\#x(....);|lt;|gt;|amp;)"
+    # The pattern below is match & that is not immediately followed by #
+    string = re.sub(r"&(?!" + start_with_match + ")", '&amp;', string)
+    return string

@@ -68,9 +68,8 @@ def journal_id(soup):
 def journal_title(soup):
     return node_text(raw_parser.journal_title(soup))
 
-def journal_issn(soup, pub_format = None):
-    if pub_format:
-        return node_text(raw_parser.journal_issn(soup, pub_format))
+def journal_issn(soup, pub_format=None, pub_type=None):
+    return node_text(raw_parser.journal_issn(soup, pub_format, pub_type))
 
 def publisher(soup):
     return node_text(raw_parser.publisher(soup))
@@ -81,6 +80,9 @@ def article_type(soup):
 
 def volume(soup):
     return node_text(first(raw_parser.volume(soup)))
+
+def issue(soup):
+    return node_text(first(raw_parser.issue(raw_parser.article_meta(soup))))
 
 def elocation_id(soup):
     return node_text(first(raw_parser.elocation_id(soup)))
@@ -278,13 +280,34 @@ def pub_date(soup):
     pub_date_date, pub_date_day, pub_date_month, pub_date_year, pub_date_timestamp
     Default date_type is pub
     """
-    pub_date = raw_parser.pub_date(soup, date_type = "pub")
+    pub_date = first(raw_parser.pub_date(soup, date_type="pub"))
     if pub_date is None:
-        pub_date = raw_parser.pub_date(soup, date_type = "publication")
+        pub_date = first(raw_parser.pub_date(soup, date_type="publication"))
     if pub_date is None:
         return None
     (day, month, year) = ymd(pub_date)
     return date_struct(year, month, day)
+
+def pub_dates(soup):
+    """
+    return a list of all the pub dates
+    """
+    pub_dates = []
+    tags = raw_parser.pub_date(soup)
+    for tag in tags:
+        pub_date = OrderedDict()
+        copy_attribute(tag.attrs, 'publication-format', pub_date)
+        copy_attribute(tag.attrs, 'date-type', pub_date)
+        copy_attribute(tag.attrs, 'pub-type', pub_date)
+        for tag_attr in ["date-type", "pub-type"]:
+            if tag_attr in tag.attrs:
+                (day, month, year) = ymd(tag)
+                pub_date['day'] = day
+                pub_date['month'] = month
+                pub_date['year'] = year
+                pub_date['date'] = date_struct_nn(year, month, day)
+        pub_dates.append(pub_date)
+    return pub_dates
 
 def history_date(soup, date_type = None):
     """
@@ -394,10 +417,10 @@ def collection_year(soup):
     """
     Pub date of type collection will hold a year element for VOR articles
     """
-    pub_date = raw_parser.pub_date_collection(soup, pub_type = "collection")
+    pub_date = first(raw_parser.pub_date(soup, pub_type="collection"))
     if pub_date is None:
         return None
-    
+
     year = None
     year_tag = raw_parser.year(pub_date)
     if year_tag:
@@ -433,11 +456,11 @@ def abstracts(soup):
             abstract["title"] = node_text(title_tag)
         
         abstract["content"] = None
-        if len(paragraphs(tag)) > 0:
+        if raw_parser.paragraph(tag):
             abstract["content"] = ""
             abstract["full_content"] = ""
             
-            good_paragraphs = remove_doi_paragraph(paragraphs(tag))
+            good_paragraphs = remove_doi_paragraph(raw_parser.paragraph(tag))
             
             # Plain text content
             glue = ""
@@ -1265,6 +1288,11 @@ def refs(soup):
             set_if_value(ref, "uri", uri_tag.get('xlink:href'))
             set_if_value(ref, "uri_text", node_contents_str(uri_tag))
 
+        # accession, could be in either of two tags
+        set_if_value(ref, "accession", node_contents_str(first(raw_parser.object_id(tag, "art-access-id"))))
+        if not ref.get('accession'):
+            set_if_value(ref, "accession", node_contents_str(first(raw_parser.pub_id(tag, pub_id_type="accession"))))
+
         if(raw_parser.year(tag)):
             set_if_value(ref, "year", node_text(raw_parser.year(tag)))
             set_if_value(ref, "year-iso-8601-date", raw_parser.year(tag).get('iso-8601-date'))
@@ -1279,7 +1307,8 @@ def refs(soup):
 
         set_if_value(ref, "source", node_text(first(raw_parser.source(tag))))
         set_if_value(ref, "elocation-id", node_text(first(raw_parser.elocation_id(tag))))
-        copy_attribute(first(raw_parser.element_citation(tag)).attrs, "publication-type", ref)
+        if raw_parser.element_citation(tag):
+            copy_attribute(first(raw_parser.element_citation(tag)).attrs, "publication-type", ref)
 
         # authors
         person_group = raw_parser.person_group(tag)
@@ -1333,6 +1362,7 @@ def refs(soup):
             ref['authors'] = authors
 
         set_if_value(ref, "volume", node_text(first(raw_parser.volume(tag))))
+        set_if_value(ref, "issue", node_text(first(raw_parser.issue(tag))))
         set_if_value(ref, "fpage", node_text(first(raw_parser.fpage(tag))))
         set_if_value(ref, "lpage", node_text(first(raw_parser.lpage(tag))))
         set_if_value(ref, "collab", node_text(first(raw_parser.collab(tag))))
@@ -1407,7 +1437,7 @@ def components(soup):
     
     for tag in component_tags:
         
-        component = {}
+        component = OrderedDict()
         
         # Component type is the tag's name
         ctype = tag.name
@@ -1419,8 +1449,9 @@ def components(soup):
         else:
             component['doi'] = doi_uri_to_doi(component_doi)
             component['doi_url'] = doi_to_doi_uri(component['doi'])
-            
-        
+
+        copy_attribute(tag.attrs, 'id', component)
+
         if(ctype == "sub-article"):
             title_tag = raw_parser.article_title(tag)
         elif(ctype == "boxed-text"):
@@ -2046,6 +2077,10 @@ def body_block_content_render(tag, recursive=False, base_url=None):
             elif child_tag.name == "fig" and tag.name == "fig-group":
                 # Do not fig inside fig-group a second time
                 pass
+            elif child_tag.name == "media" and tag.name == "fig-group":
+                # Do not include a media video inside fig-group a second time
+                if child_tag.get("mimetype") == "video":
+                    pass
             else:
                 for block_content in body_block_content_render(child_tag, recursive=True, base_url=base_url):
                     if block_content != {}:
@@ -2143,7 +2178,7 @@ def body_block_paragraph_content(text):
     return tag_content
 
 def body_block_title_label_caption(tag_content, title_value, label_value,
-                                   caption_content, set_caption=True, prefer_title=False):
+                                   caption_content, set_caption=True, prefer_title=False, prefer_label=False):
     """set the title, label and caption values in a consistent way
     
     set_caption: insert a "caption" field
@@ -2156,6 +2191,10 @@ def body_block_title_label_caption(tag_content, title_value, label_value,
         if "title" not in tag_content and label_value:
             set_if_value(tag_content, "title", label_value)
             del(tag_content["label"])
+    if prefer_label:
+        if "label" not in tag_content and title_value:
+            set_if_value(tag_content, "label", rstrip_punctuation(title_value))
+            del(tag_content["title"])
 
 def body_block_content(tag, html_flag=True, base_url=None):
     # Configure the XML to HTML conversion preference for shorthand use below
@@ -2184,7 +2223,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
         if raw_parser.caption(tag):
             caption_tags = body_blocks(raw_parser.caption(tag))
             caption_content, supplementary_material_tags = body_block_caption_render(caption_tags, base_url=base_url)
-        body_block_title_label_caption(tag_content, title_value, label_value, caption_content, False, True)
+        body_block_title_label_caption(tag_content, title_value, label_value, caption_content, set_caption=False, prefer_title=True)
 
     elif tag.name == "p":
         tag_content["type"] = "paragraph"
@@ -2198,12 +2237,17 @@ def body_block_content(tag, html_flag=True, base_url=None):
             tag_content["text"] = convert(clean_whitespace(node_contents_str(tag_copy)))
 
     elif tag.name == "disp-quote":
-        tag_content["type"] = "quote"
+        if tag.get("content-type") and tag.get("content-type") == "editor-comment":
+            tag_content["type"] = "excerpt"
+            block_array_name = "content"
+        else:
+            tag_content["type"] = "quote"
+            block_array_name = "text"
         for child_tag in tag:
             if body_block_content(child_tag) != {}:
-                if "text" not in tag_content:
-                    tag_content["text"] = []
-                tag_content["text"].append(body_block_content(child_tag, base_url=base_url))
+                if block_array_name not in tag_content:
+                    tag_content[block_array_name] = []
+                tag_content[block_array_name].append(body_block_content(child_tag, base_url=base_url))
 
     elif tag.name == "table-wrap":
         # figure wrap
@@ -2223,7 +2267,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
             caption_tags = body_blocks(caption_tag_inspected(tag, tag.name))
             caption_content, supplementary_material_tags = body_block_caption_render(caption_tags, base_url=base_url)
 
-        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, True)
+        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, set_caption=True)
 
         tables = raw_parser.table(tag)
         asset_tag_content["tables"] = []
@@ -2259,10 +2303,11 @@ def body_block_content(tag, html_flag=True, base_url=None):
             if len(source_data) > 0:
                 asset_tag_content["sourceData"] = source_data
 
-        # add to figure assets if there is a label otherwise use the table asset alone
+        # add to figure assets if there is a label and it is not a keyresource table
         if asset_tag_content.get("label"):
             tag_content["assets"].append(asset_tag_content)
         else:
+            # use the table asset alone
             tag_content = asset_tag_content
 
     elif tag.name == "disp-formula":
@@ -2294,7 +2339,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
         if raw_parser.caption(tag):
             caption_tags = body_blocks(raw_parser.caption(tag))
             caption_content, supplementary_material_tags = body_block_caption_render(caption_tags, base_url=base_url)
-        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, True)
+        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, set_caption=True)
 
         if raw_parser.graphic(tag):
             image_content = {}
@@ -2316,9 +2361,9 @@ def body_block_content(tag, html_flag=True, base_url=None):
             for attrib_tag in raw_parser.licence_p(tag):
                 attributions.append(node_contents_str(attrib_tag))
         if len(attributions) > 0:
-            asset_tag_content["attribution"] = []
+            asset_tag_content["image"]["attribution"] = []
             for attrib_string in attributions:
-                asset_tag_content["attribution"].append(convert(attrib_string))
+                asset_tag_content["image"]["attribution"].append(convert(attrib_string))
 
         # sourceData
         if supplementary_material_tags and len(supplementary_material_tags) > 0:
@@ -2354,7 +2399,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
         if raw_parser.caption(tag):
             caption_tags = body_blocks(raw_parser.caption(tag))
             caption_content, supplementary_material_tags = body_block_caption_render(caption_tags, base_url=base_url)
-        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, True)
+        body_block_title_label_caption(asset_tag_content, title_value, label_value, caption_content, set_caption=True)
 
         set_if_value(asset_tag_content, "uri", tag.get('xlink:href'))
         if "uri" in asset_tag_content and asset_tag_content["uri"].endswith('.gif'):
@@ -2371,13 +2416,18 @@ def body_block_content(tag, html_flag=True, base_url=None):
         tag_content["assets"].append(asset_tag_content)
 
     elif tag.name == "fig-group":
-
-        for i, fig_tag in enumerate(raw_parser.fig(tag)):
+        for fig_tag in extract_nodes(tag, ["fig", "media"]):
+            # Skip any media tags that are not videos
+            if fig_tag.name == "media" and fig_tag.get("mimetype") != "video":
+                continue
             fig_tag_content = body_block_content(fig_tag, base_url=base_url)
-            if i == 0:
+            if len(tag_content) <= 0:
                 tag_content = fig_tag_content
-            elif i > 0:
-                tag_content["assets"].append(fig_tag_content["assets"][0])
+            else:
+                asset = fig_tag_content["assets"][0]
+                # Only add if there is an id, should filter out unwanted supplementary file data
+                if "id" in asset:
+                    tag_content["assets"].append(asset)
 
     elif tag.name == "supplementary-material":
         set_if_value(tag_content, "doi", doi_uri_to_doi(object_id_doi(tag, tag.name)))
@@ -2391,7 +2441,7 @@ def body_block_content(tag, html_flag=True, base_url=None):
         if raw_parser.caption(tag):
             caption_tags = body_blocks(raw_parser.caption(tag))
             caption_content, supplementary_material_tags = body_block_caption_render(caption_tags, base_url=base_url)
-        body_block_title_label_caption(tag_content, title_value, label_value, caption_content, True, prefer_title=True)
+        body_block_title_label_caption(tag_content, title_value, label_value, caption_content, set_caption=True, prefer_label=True)
 
         if raw_parser.media(tag):
             media_tag = first(raw_parser.media(tag))
@@ -2818,7 +2868,7 @@ def author_person(author, contributions, correspondence, competing_interests,
         author.get("surname"), author.get("given-names"), author.get("suffix"))
     author_json["name"] = author_name
     if author.get("orcid"):
-        author_json["orcid"] = author.get("orcid").replace("http://orcid.org/", "")
+        author_json["orcid"] = orcid_uri_to_orcid(author.get("orcid"))
     if author.get("deceased"):
         author_json["deceased"] = True
     if author.get("role"):
@@ -3253,6 +3303,10 @@ def references_json(soup, html_flag=True):
             else:
                 ref_content["type"] = "other"
 
+        # dataId
+        if ref.get("publication-type") in ["data"]:
+            set_if_value(ref_content, "dataId", ref.get("accession"))
+
         # doi
         if ref.get("publication-type") not in ["web"]:
             set_if_value(ref_content, "doi", ref.get("doi"))
@@ -3452,6 +3506,8 @@ def appendices_json(soup, base_url=None):
                 for block in content_block.get("content"):
                     clean_app_content.append(block)
             else:
+                # Unwrap boxed-text if found here too
+                content_block = unwrap_appendix_box(content_block)
                 clean_app_content.append(content_block)
         app_content["content"] = clean_app_content
 
@@ -3606,8 +3662,20 @@ def supplementary_files_json(soup):
         i = 1
         for file in additional_files_json:
             file["id"] = "SD" + str(i) + "-data"
-            file["title"] = "Supplementary file " + str(i) + "."
+            file["label"] = "Supplementary file " + str(i) + "."
             i = i + 1
+
+    # if there is a single supplementary zip file for PoA,
+    # rename it and describe it
+    if len(additional_files_json) == 1:
+        single_additional_file = additional_files_json[0]['filename']
+        if re.match("^.+-supp-.+\.zip$", single_additional_file):
+            file = additional_files_json[0]
+            file["label"] = "All additional files"
+            file['caption'] = [{
+                "text": "Any figure supplements, source code, source data, videos or supplementary files associated with this article are contained within this zip.",
+                "type": "paragraph",
+            }]
 
     return additional_files_json
 

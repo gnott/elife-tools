@@ -41,8 +41,14 @@ def journal_id(soup):
 def journal_title(soup):
     return first(extract_nodes(soup, "journal-title"))
 
-def journal_issn(soup, pub_format):
-    return first(extract_nodes(soup, "issn", attr = "publication-format", value = pub_format))
+def journal_issn(soup, pub_format, pub_type):
+    if pub_format is None and pub_type is None:
+        # return the first issn tag found regardless of which type
+        return first(extract_nodes(soup, "issn"))
+    elif pub_format is not None:
+        return first(extract_nodes(soup, "issn", attr="publication-format", value=pub_format))
+    elif pub_type is not None:
+        return first(extract_nodes(soup, "issn", attr="pub-type", value=pub_type))
 
 def publisher(soup):
     return first(extract_nodes(soup, "publisher-name"))
@@ -51,11 +57,13 @@ def article_type(soup):
     # returns raw data, just that the data doesn't contain any BS nodes
     return first(extract_nodes(soup, "article")).get('article-type')
 
-def pub_date(soup, date_type):
-    return first(extract_nodes(soup, "pub-date", attr = "date-type", value = date_type))
-
-def pub_date_collection(soup, pub_type):
-    return first(extract_nodes(soup, "pub-date", attr = "pub-type", value = pub_type))
+def pub_date(soup, date_type=None, pub_type=None):
+    if date_type is not None:
+        return extract_nodes(soup, "pub-date", attr="date-type", value=date_type)
+    elif pub_type is not None:
+        return extract_nodes(soup, "pub-date", attr="pub-type", value=pub_type)
+    else:
+        return extract_nodes(soup, "pub-date")
 
 def history_date(soup, date_type):
     date_tags = extract_nodes(soup, "date", attr = "date-type", value = date_type)
@@ -266,6 +274,9 @@ def ref_list(soup):
 
 def volume(soup):
     return extract_nodes(soup, "volume")
+
+def issue(soup):
+    return extract_nodes(soup, "issue")
 
 def elocation_id(soup):
     return extract_nodes(soup, "elocation-id")
